@@ -30,7 +30,7 @@ on:
         description: '是否开启kpm(仅对sukisu生效; 可能轻微增加耗电，不需要可保持默认关闭)'
         required: true
         type: choice
-        default: 'false'
+        default: 'true'
         options:
           - 'true'
           - 'false'
@@ -213,7 +213,7 @@ jobs:
             # 创建版本定义模板&版本格式函数: 使用获取的提交哈希和固定后缀
             # KSU_VERSION_API: API 版本定义
             # KSU_VERSION_FULL: 完整版本定义
-            VERSION_DEFINITIONS=$'define get_ksu_version_full\nv\\$1-'"$GIT_COMMIT_HASH"$'@cctv18\nendef\n\nKSU_VERSION_API := '"$KSU_API_VERSION"$'\nKSU_VERSION_FULL := v'"$KSU_API_VERSION"$'-'"$GIT_COMMIT_HASH"$'@cctv18'
+            VERSION_DEFINITIONS=$'define get_ksu_version_full\nv\\$1-'"$GIT_COMMIT_HASH"$'我爱隐藏\nendef\n\nKSU_VERSION_API := '"$KSU_API_VERSION"$'\nKSU_VERSION_FULL := v'"$KSU_API_VERSION"$'-'"$GIT_COMMIT_HASH"$'我爱隐藏'
             # 清理内核 Makefile 中的旧版本定义
             # 删除版本函数
             sed -i '/define get_ksu_version_full/,/endef/d' kernel/Makefile
@@ -240,7 +240,7 @@ jobs:
             # 验证修改结果
             grep -A10 "REPO_OWNER" kernel/Makefile  # 检查插入点后的内容
             grep "KSU_VERSION_FULL" kernel/Makefile # 确认版本定义存在
-            echo "SukiSU版本号: v${KSU_API_VERSION}-${GIT_COMMIT_HASH}@cctv18"
+            echo "SukiSU版本号: v${KSU_API_VERSION}-${GIT_COMMIT_HASH}我爱隐藏"
           else
             echo "正在配置KernelSU Next..."
             curl -LSs "https://raw.githubusercontent.com/pershoot/KernelSU-Next/next-susfs/kernel/setup.sh" | bash -s next-susfs
@@ -615,6 +615,11 @@ jobs:
           echo "编译后空间:"
           df -h
          
+      - name: Set build timestamp
+        run: |         
+         export SOURCE_DATE_EPOCH=$(date -d "Tue Jul  1 19:48:18 UTC 2025" +%s)
+         echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" >> $GITHUB_ENV
+      
       - name: 应用KPM并修补内核
         run: |
           if [[ ${{ github.event.inputs.kpm_enable }} == 'true' && ${{ github.event.inputs.ksu_type }} == "sukisu" ]]; then
@@ -652,6 +657,40 @@ jobs:
             zip -r ../AnyKernel3_${KSU_TYPENAME}_${{ env.KSUVER }}_${{ env.KERNEL_VERSION }}_A15_${{ env.KERNEL_NAME }}.zip ./*
           fi
 
+      - name: Download Latest SUSFS Module from Release
+        continue-on-error: true
+        run: |
+         cd kernel_workspace # 切换到统一工作目录
+         # 下载SUSFS模块（加超时重试）
+         wget --timeout=30 --tries=2 -O ksu_module_susfs_1.5.2+_Release.zip https://github.com/sidex15/ksu_module_susfs/releases/latest/download/ksu_module_susfs_1.5.2+.zip
+         # 确保下载成功再保留（避免空文件）
+         if [[ ! -f ./ksu_module_susfs_1.5.2+_Release.zip ]]; then
+         echo "SUSFS模块下载失败"
+         fi
+      
+      - name: Download Latest SukiSU-Ultra APK from CI
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          run_id=$(gh api \
+            "repos/SukiSU-Ultra/SukiSU-Ultra/actions/workflows/build-manager.yml/runs?branch=main&status=success&per_page=1" \
+            --jq '.workflow_runs[0].id' || echo "")
+          if [[ -z "$run_id" ]]; then
+            echo "No successful workflow run found. Skipping artifact download."
+          else
+            artifact_url=$(gh api \
+              "repos/SukiSU-Ultra/SukiSU-Ultra/actions/runs/$run_id/artifacts" | \
+              jq -r '.artifacts[] | select(.name == "manager") | .archive_download_url' | head -n1)
+            if [[ -z "$artifact_url" ]]; then
+              echo "No 'manager' artifact found in run $run_id. Skipping download."
+            else
+              echo "Downloading from: $artifact_url"
+              curl -fL -H "Authorization: token $GITHUB_TOKEN" -o manager.zip "$artifact_url"
+              unzip -j manager.zip "*.apk" -d ./*
+            fi
+          fi
+      
       - name: 上传 Ccache 调试日志
         if: always() && inputs.ccache_debug
         uses: actions/upload-artifact@v4

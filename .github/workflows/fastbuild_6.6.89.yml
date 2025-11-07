@@ -81,11 +81,11 @@ on:
         required: true
         type: boolean
         default: 'false'
-      kernel_suffix:
-        description: '内核后缀(留空默认,开头别加连字符,勿加空格等影响指令运行的保留字符)'
+      by:
+        description: '自定义sukisu后缀(留空默认,开头别加连字符,勿加空格等影响指令运行的保留字符)'
         required: false
         type: string
-        default: ''
+        default: '我爱隐藏'
 
 jobs:
   build:
@@ -180,6 +180,10 @@ jobs:
             ccache -sv
           fi
 
+      - name: Export suffix
+        run: |
+          echo "TAG_SUFFIX=${{ github.event.inputs.by }}" >> $GITHUB_ENV
+      
       - name: 添加KernelSU
         id: ksu_version
         run: |
@@ -241,6 +245,14 @@ jobs:
             grep -A10 "REPO_OWNER" kernel/Makefile  # 检查插入点后的内容
             grep "KSU_VERSION_FULL" kernel/Makefile # 确认版本定义存在
             echo "SukiSU版本号: v${KSU_API_VERSION}-${GIT_COMMIT_HASH}-我爱隐藏"
+            # 获取自定义后缀（如：见清）
+            TAG_SUFFIX="${{ github.event.inputs.sukisu_tag }}"
+            # 使用正确变量名 KSU_VERSION_API 替换函数体
+            sed -i "/^define get_ksu_version_full$/,/^endef$/c\
+            define get_ksu_version_full\\
+            v\$(KSU_VERSION_API)-sukisu-\$(KSU_VERSION)-by-${TAG_SUFFIX}\\
+            endef" kernel/Makefile
+            echo "✅ Injected custom version: v\$(KSU_VERSION_API)-sukisu-\$(KSU_VERSION)-by-$TAG_SUFFIX"
           else
             echo "正在配置KernelSU Next..."
             curl -LSs "https://raw.githubusercontent.com/pershoot/KernelSU-Next/next-susfs/kernel/setup.sh" | bash -s next-susfs

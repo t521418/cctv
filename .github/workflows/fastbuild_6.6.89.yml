@@ -513,10 +513,20 @@ jobs:
           cd kernel_workspace
           echo "CONFIG_REKERNEL=y" >> ./common/arch/arm64/configs/gki_defconfig
 
-      - name: ⚙️ Set KERNEL_TIME (设置对应机型构建时间)
+      - name: ⚙️ Set KERNEL_TIME (自定义构建时间)
         run: |
-          echo 'KERNEL_TIME=Tue Dec 17 23:36:49 UTC 2024' >> $GITHUB_ENV
-      
+          # 直接定义自定义时间，无任何env引用，避免上下文无效
+          CUSTOM_TIME="Mon Dec  8 04:00:43 UTC 2025"
+          # 写入KERNEL_TIME到环境变量
+          echo "KERNEL_TIME=$CUSTOM_TIME" > $GITHUB_ENV
+          # 格式化FAKESTAT/FAKETIME并直接写入环境变量，覆盖原脚本默认值
+          echo "FAKESTAT=$(echo $CUSTOM_TIME | awk '{print $5"-"$2"-"$3" "$4}')" >> $GITHUB_ENV
+          echo "FAKETIME=@$CUSTOM_TIME" >> $GITHUB_ENV
+          # 同时写入内核配置，强制生效（一步到位，无需额外新增步骤）
+          cd kernel_workspace/common
+          echo "CONFIG_BUILD_TIME=\"$CUSTOM_TIME\"" >> ./arch/arm64/configs/gki_defconfig
+          echo "CONFIG_BUILD_TIME_AUTO=n" >> ./arch/arm64/configs/gki_defconfig
+
       - name: 启用内核级基带保护
         if: inputs.baseband_guard
         run: |
